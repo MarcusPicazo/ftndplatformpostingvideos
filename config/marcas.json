@@ -1,0 +1,22 @@
+{
+  "ftnd": {
+    "nombre": "FTND",
+    "zona_horaria": "America/Mexico_City",
+    "horarios": ["13:00", "19:30"],
+    "dias": ["lun", "mar", "mie", "jue", "vie", "sab", "dom"],
+    "redes_activas": ["instagram"],
+    "instagram": { "modo": "instagram_login", "secret_token": "FTND_IG_TOKEN" },
+    "borrar_de_r2_tras_dias": 7
+  },
+  "tezontle": {
+    "nombre": "Tezontle",
+    "zona_horaria": "America/Mexico_City",
+    "horarios": ["10:00", "17:00"],
+    "dias": ["lun", "mar", "mie", "jue", "vie"],
+    "redes_activas": ["instagram", "facebook", "linkedin"],
+    "instagram": { "modo": "facebook_login", "secret_token": "TEZONTLE_IG_TOKEN" },
+    "facebook": { "secret_token": "TEZONTLE_FB_PAGE_TOKEN" },
+    "linkedin": { "alcance": "perfil_personal", "secret_token": "TEZONTLE_LINKEDIN_TOKEN" },
+    "borrar_de_r2_tras_dias": 7
+  }
+}
