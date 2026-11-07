@@ -1,7 +1,0 @@
-{
-  "zona_horaria": "America/Mexico_City",
-  "horarios": ["13:00", "19:30"],
-  "dias": ["lun", "mar", "mie", "jue", "vie", "sab", "dom"],
-  "redes_por_defecto": ["instagram", "facebook"],
-  "borrar_de_r2_tras_dias": 7
-}
