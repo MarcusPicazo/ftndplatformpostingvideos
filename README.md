@@ -1,5 +1,10 @@
 # Publicador Fraternidad
 
+> **⚠️ Desactualizado.** La fuente de verdad del proyecto es `CLAUDE.md`
+> (publicador multi-marca FTND + Tezontle, todo en la nube, medios en R2
+> `entrada/{marca}/`). Este README conserva el diseño original de una sola
+> marca como referencia histórica.
+
 Publicador automático de los videos del proyecto musical de Marcus ("Fraternidad").
 Publica Reels en **Instagram** y en una **página de Facebook** según un calendario,
 sin que Marcus tenga que entrar a las redes. Corre en la nube con GitHub Actions.
