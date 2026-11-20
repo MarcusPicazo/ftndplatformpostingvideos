@@ -53,11 +53,12 @@ verificar desde código.
 1. **Costo cero.** Solo capas gratuitas: GitHub Actions, Cloudflare R2, Graph
    API de Meta, API de LinkedIn. Si algo requiere pagar, detente y avisa antes
    de hacerlo.
-2. **Disco E:, no C:.** El repo vive donde esté (puede ser cualquier disco),
-   pero los videos/imágenes y cualquier archivo pesado viven en el disco E:.
-   Nunca escribir medios ni cachés grandes en C:. (El disco E: es externo — si
-   alguna vez "desaparece" del sistema, probablemente se desconectó
-   físicamente, no se borró nada.)
+2. **Todo en la nube, sin discos locales.** El proyecto vive y se trabaja en
+   Claude Code en la nube (repo en GitHub). Los videos/imágenes **no viven en
+   ningún disco local** (ya no se usa el disco E:): Marcus los sube directo a
+   Cloudflare R2 desde el navegador, a `entrada/{marca}/`. Ningún script
+   descarga medios a disco: se validan con ffprobe leyendo de una URL
+   prefirmada y se mueven dentro de R2 con copia del lado del servidor.
 3. **No alterar los videos.** Se publican tal cual. No recortar, no
    reescalar, no recodificar, salvo que Marcus lo pida.
 4. **Secretos fuera del repo.** Tokens y llaves van en GitHub Secrets (nube) y
@@ -83,11 +84,11 @@ verificar desde código.
 ## Arquitectura
 
 ```
-[compu de Marcus]                                    [nube]
-E:\publicador\{marca}\Listos\*
-        │  npm run subir-lote -- --marca ftnd
-        ├──► Cloudflare R2  (videos/{marca}/…)
-        └──► contenido/{marca}/calendario.json ──git push──► GitHub repo
+[navegador de Marcus]
+  dashboard de Cloudflare ──► R2: entrada/{marca}/archivo.mp4 (+ archivo.txt)
+                                        │  GitHub Actions "Subir lote" (subir-lote.ts)
+                                        ├──► R2: videos/{marca}/{id}.mp4 (copia idéntica)
+                                        └──► contenido/{marca}/calendario.json ──commit──► GitHub repo
                                                                   │  cron cada hora
                                                                   ▼
                                                      GitHub Actions: publicar.ts
@@ -111,7 +112,8 @@ publicador-fraternidad/
     ftnd/calendario.json
     tezontle/calendario.json
   src/
-    subir-lote.ts            # local: sube medios y agenda --marca <id>
+    subir-lote.ts            # nube: agenda lo que hay en R2 entrada/{marca}/ --marca <id>
+    fechas.ts                # horarios libres y fechas con zona horaria
     publicar.ts              # nube: publica lo pendiente de todas las marcas
     check.ts                 # Fase 0: valida credenciales y R2 por marca
     marcas.ts                # leer y validar config/marcas.json
@@ -127,17 +129,23 @@ publicador-fraternidad/
   scripts/
     obtener-token.ts         # ayuda interactiva para sacar tokens (parametrizado por marca/red)
   .github/workflows/publicar.yml
+  .github/workflows/subir-lote.yml   # manual (Run workflow): agenda y hace commit
   .env.example
 ```
 
-### Carpetas locales de medios (disco E:)
+### Carpetas de medios en R2
 
 ```
-E:\publicador\ftnd\Listos\        # medios listos para subir de FTND
-E:\publicador\ftnd\Programados\   # ya subidos
-E:\publicador\tezontle\Listos\
-E:\publicador\tezontle\Programados\
+entrada/ftnd/        # Marcus sube aquí (desde el navegador) lo listo de FTND
+entrada/tezontle/    # ídem Tezontle
+videos/ftnd/         # ya agendado (lo mueve subir-lote; se publica desde aquí)
+videos/tezontle/
 ```
+
+Se procesan solo los archivos directamente dentro de `entrada/{marca}/`
+(videos `.mp4`/`.mov`, imágenes `.jpg`/`.jpeg`/`.png`), en orden alfabético
+(para controlar el orden, nombrarlos `01-…`, `02-…`). Lo que no pasa la
+validación se queda en `entrada/` y el workflow falla para avisar.
 
 Cada video o imagen puede llevar un `.txt` con el mismo nombre para el copy
 general. Opcionalmente, copys distintos por red:
@@ -180,13 +188,16 @@ existe uno específico para una red, se usa el `.txt` general.
   {
     "id": "2026-11-10-lanzamiento-01",
     "marca": "ftnd",
+    "tipo": "video",
     "archivo_r2": "videos/ftnd/2026-11-10-lanzamiento-01.mp4",
     "publicar_en": "2026-11-10T19:30:00-06:00",
     "copy": "texto general, usado si no hay copy especifico por red",
+    "copys": { "instagram": "opcional, de archivo.instagram.txt" },
     "redes": ["instagram"],
     "estado": {
       "instagram": { "status": "pendiente", "container_id": null, "media_id": null, "error": null }
-    }
+    },
+    "origen": { "key": "entrada/ftnd/lanzamiento-01.mp4", "etag": "…" }
   }
 ]
 ```
@@ -238,10 +249,15 @@ seguir. Explicarle cada paso manual clic por clic.
 
 ### Fase 1: `subir-lote` multi-marca
 
-- `npm run subir-lote -- --marca ftnd` (o `tezontle`).
-- Lee `E:\publicador\{marca}\Listos\`, valida con ffprobe, busca copy general
-  y copys específicos por red, sube a R2 bajo `videos/{marca}/`, agrega al
-  `calendario.json` de esa marca, mueve a `Programados`.
+- `npm run subir-lote -- --marca ftnd` (o `tezontle`; sin `--marca` procesa
+  todas; `--simular` no cambia nada). Normalmente se corre desde GitHub
+  Actions → "Subir lote" → Run workflow, que además hace commit del calendario.
+- Lista R2 `entrada/{marca}/`, valida con ffprobe sobre URL prefirmada (sin
+  descargar), lee copy general y copys por red, asigna el siguiente horario
+  libre, copia a `videos/{marca}/{id}.ext` (copia del servidor, bytes
+  idénticos), agrega al `calendario.json` y borra el original y sus `.txt` de
+  `entrada/`. Guarda `origen` (key + etag) para que una re-ejecución no
+  duplique.
 
 ### Fase 2: FTND → Instagram completo (punta a punta)
 
@@ -300,9 +316,10 @@ seguir. Explicarle cada paso manual clic por clic.
 
 ## Definición de terminado
 
-- Marcus deja medios y sus `.txt` en `Listos\{marca}`, corre
-  `npm run subir-lote -- --marca <marca>`, y el contenido sale solo en las
-  redes activas de cada marca a la hora agendada, con la compu apagada.
+- Marcus sube medios y sus `.txt` a R2 `entrada/{marca}/` desde el navegador,
+  corre el workflow "Subir lote" (o se corre solo), y el contenido sale solo
+  en las redes activas de cada marca a la hora agendada, sin ninguna compu
+  prendida.
 - Ninguna publicación se duplica.
 - Los tokens se renuevan solos antes de caducar.
 - Cualquier fallo le llega por correo.
