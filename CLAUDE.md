@@ -107,7 +107,7 @@ verificar desde código.
                                         │  GitHub Actions "Subir lote" (subir-lote.ts, solo cada 30 min)
                                         ├──► R2: videos/{marca}/{id}.mp4 (copia idéntica)
                                         └──► contenido/{marca}/calendario.json ──commit──► GitHub repo
-                                                                  │  cron cada hora
+                                                                  │  cron cada 30 min (:02 y :32)
                                                                   ▼
                                                      GitHub Actions: publicar.ts
                                                        ├─► por cada marca activa:
@@ -138,6 +138,7 @@ publicador-fraternidad/
     calendario.ts            # leer, escribir y validar contenido/{marca}/calendario.json
     video.ts                 # validación con ffprobe, solo lectura
     meta/
+      graph.ts               # cliente Graph API: token en header, reintentos con backoff
       instagram.ts           # graph.facebook.com — publicar en IG (Unified Login para FTND; Facebook Login para Tezontle; mismos endpoints)
       facebook.ts            # graph.facebook.com — Page Reels/Feed (Tezontle)
     linkedin/
@@ -146,7 +147,7 @@ publicador-fraternidad/
       r2.ts
   scripts/
     obtener-token.ts         # ayuda interactiva para sacar tokens (parametrizado por marca/red)
-  .github/workflows/publicar.yml
+  .github/workflows/publicar.yml     # cada 30 min y manual (Run workflow, opcion "id" para publicar ya)
   .github/workflows/subir-lote.yml   # cada 30 min y manual (Run workflow): agenda y hace commit
   .github/workflows/check.yml        # manual (Run workflow): valida credenciales y R2
   .env.example
@@ -302,6 +303,17 @@ seguir. Explicarle cada paso manual clic por clic.
   (`media_type=REELS` + `video_url` prefirmada, o `image_url` JPEG), revisar
   `status_code` del contenedor, `POST /{ig-id}/media_publish`. Límite: 100
   publicaciones por API en 24 h (`content_publishing_limit`).
+- Implementado: `src/meta/graph.ts` (token en header `Authorization`, nunca
+  en la URL; reintenta errores temporales 5 s / 20 s / 60 s) y
+  `src/meta/instagram.ts` (guarda `container_id` en cuanto se crea; si una
+  corrida se corta, la siguiente reanuda ese contenedor y, si Meta dice
+  `PUBLISHED`, no vuelve a publicar). Revisa el contenedor 1 vez por minuto
+  hasta 6 min; si sigue `IN_PROGRESS` queda en `procesando` para la siguiente
+  corrida. Guarda `media_id`, `permalink` y `publicado_en`.
+- `publicar.ts` + workflow "Publicar" (cada 30 min, y manual con `id` para
+  publicar una entrada de inmediato o `simular`).
+- `subir-lote` rechaza imágenes que no sean JPEG si la marca publica en
+  Instagram.
 - Probar con un video real de FTND hasta verlo publicado en
   `@ftnd_music`.
 

@@ -12,6 +12,10 @@ export interface EstadoRed {
   container_id: string | null;
   media_id: string | null;
   error: string | null;
+  /** Enlace publico de la publicacion (cuando la red lo da). */
+  permalink?: string;
+  /** Fecha real de publicacion (ISO). */
+  publicado_en?: string;
 }
 
 export interface Publicacion {
