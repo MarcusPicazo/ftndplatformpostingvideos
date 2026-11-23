@@ -13,6 +13,7 @@
 //   npm run subir-lote                          # todas las marcas
 //   npm run subir-lote -- --marca ftnd --simular   # solo muestra lo que haria, no cambia nada
 //   npm run subir-lote -- --espera 10           # ignora lo subido hace menos de 10 min
+//   npm run subir-lote -- --hay-pendientes      # solo cuenta lo que hay en entrada/ (para el workflow)
 //
 // Lo que no pasa la validacion se mueve a entrada/{marca}/rechazados/ junto con
 // un archivo .motivo.txt, para que no vuelva a fallar en cada corrida automatica.
@@ -21,6 +22,7 @@
 
 import "dotenv/config";
 import { parseArgs } from "node:util";
+import { appendFile } from "node:fs/promises";
 import { leerMarcas, REDES, type Marca, type Red } from "./marcas.js";
 import { leerCalendario, guardarCalendario, estadoInicial, type Publicacion } from "./calendario.js";
 import {
@@ -247,6 +249,7 @@ async function main(): Promise<void> {
       marca: { type: "string" },
       simular: { type: "boolean", default: false },
       espera: { type: "string", default: "0" },
+      "hay-pendientes": { type: "boolean", default: false },
     },
   });
   const esperaMin = Number(values.espera);
@@ -255,6 +258,21 @@ async function main(): Promise<void> {
   const marcas = values.marca ? todas.filter((m) => m.id === values.marca) : todas;
   if (marcas.length === 0) {
     throw new Error(`Marca desconocida: "${values.marca}". Disponibles: ${todas.map((m) => m.id).join(", ")}`);
+  }
+
+  // Modo rapido para el workflow: solo dice si hay algo en entrada/ (sin ffprobe).
+  // Tambien crea los marcadores de carpeta entrada/{marca}/ si faltan.
+  if (values["hay-pendientes"]) {
+    let hay = false;
+    for (const marca of marcas) {
+      const prefijo = `entrada/${marca.id}/`;
+      if (!(await existe(prefijo))) await escribirTexto(prefijo, "");
+      const { lotes } = armarLotes(await listarPrefijo(prefijo), prefijo);
+      console.log(`${marca.nombre}: ${lotes.length} medio(s) en ${prefijo}`);
+      if (lotes.length > 0) hay = true;
+    }
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `hay=${hay}\n`);
+    return;
   }
 
   let fallidos = 0;
