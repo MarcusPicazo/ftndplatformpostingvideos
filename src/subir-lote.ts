@@ -180,6 +180,12 @@ async function procesarMarca(
       }
 
       const v = await validarMedio(await urlPrefirmada(lote.medio.key, 15 * 60), lote.tipo, lote.medio.bytes);
+      // Instagram solo acepta JPEG en imagenes: mejor rechazarlo aqui que fallar al publicar.
+      if (lote.tipo === "imagen" && marca.redes_activas.includes("instagram") && v.info?.codec_video !== "mjpeg") {
+        v.ok = false;
+        v.errores.push("Instagram solo acepta imagenes JPEG (.jpg)");
+        v.avisos = v.avisos.filter((a) => !a.includes("JPEG"));
+      }
       for (const a of v.avisos) console.log(`⚠️  ${nombre}: ${a}`);
       if (!v.ok) {
         for (const e of v.errores) console.log(`❌ ${nombre}: ${e}`);
