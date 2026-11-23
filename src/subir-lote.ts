@@ -12,6 +12,10 @@
 //   npm run subir-lote -- --marca ftnd          # una marca
 //   npm run subir-lote                          # todas las marcas
 //   npm run subir-lote -- --marca ftnd --simular   # solo muestra lo que haria, no cambia nada
+//   npm run subir-lote -- --espera 10           # ignora lo subido hace menos de 10 min
+//
+// Lo que no pasa la validacion se mueve a entrada/{marca}/rechazados/ junto con
+// un archivo .motivo.txt, para que no vuelva a fallar en cada corrida automatica.
 //
 // El git commit/push del calendario lo hace el workflow .github/workflows/subir-lote.yml.
 
@@ -19,7 +23,16 @@ import "dotenv/config";
 import { parseArgs } from "node:util";
 import { leerMarcas, REDES, type Marca, type Red } from "./marcas.js";
 import { leerCalendario, guardarCalendario, estadoInicial, type Publicacion } from "./calendario.js";
-import { listarPrefijo, leerTexto, urlPrefirmada, copiar, borrar, existe, type ObjetoR2 } from "./storage/r2.js";
+import {
+  listarPrefijo,
+  leerTexto,
+  urlPrefirmada,
+  copiar,
+  borrar,
+  existe,
+  escribirTexto,
+  type ObjetoR2,
+} from "./storage/r2.js";
 import { validarMedio } from "./video.js";
 import { siguienteHorario, isoConZona } from "./fechas.js";
 
@@ -48,6 +61,8 @@ function slug(texto: string): string {
 
 interface Lote {
   medio: ObjetoR2;
+  /** El mas reciente entre el medio y sus .txt (epoch ms). */
+  modificado: number;
   tipo: "video" | "imagen";
   ext: string;
   base: string;
@@ -59,6 +74,7 @@ function armarLotes(objetos: ObjetoR2[], prefijo: string): { lotes: Lote[]; igno
   // Solo archivos directamente dentro de entrada/{marca}/ (no subcarpetas).
   const directos = objetos.filter((o) => !o.key.endsWith("/") && !o.key.slice(prefijo.length).includes("/"));
   const textos = new Map(directos.filter((o) => partir(o.key).ext === ".txt").map((o) => [partir(o.key).base, o.key]));
+  const fechaDe = new Map(directos.map((o) => [o.key, o.modificado]));
   const usados = new Set<string>();
   const lotes: Lote[] = [];
   const ignorados: string[] = [];
@@ -81,7 +97,11 @@ function armarLotes(objetos: ObjetoR2[], prefijo: string): { lotes: Lote[]; igno
     }
     const txtGeneral = textos.get(base) ?? null;
     if (txtGeneral) usados.add(txtGeneral);
-    lotes.push({ medio: o, tipo, ext, base, txtGeneral, txtPorRed });
+    const modificado = Math.max(
+      o.modificado,
+      ...[txtGeneral, ...Object.values(txtPorRed)].map((k) => (k ? fechaDe.get(k) ?? 0 : 0)),
+    );
+    lotes.push({ medio: o, modificado, tipo, ext, base, txtGeneral, txtPorRed });
   }
   for (const k of textos.values()) if (!usados.has(k)) ignorados.push(`${k} (.txt sin medio con el mismo nombre)`);
   lotes.sort((a, b) => a.medio.key.localeCompare(b.medio.key));
@@ -90,9 +110,32 @@ function armarLotes(objetos: ObjetoR2[], prefijo: string): { lotes: Lote[]; igno
 
 // ---------- proceso por marca ----------
 
-async function procesarMarca(marca: Marca, simular: boolean): Promise<{ agendados: number; fallidos: number }> {
+/** Mueve el medio y sus .txt a entrada/{marca}/rechazados/ y deja una nota con el motivo. */
+async function rechazar(prefijo: string, claves: string[], nombre: string, motivos: string[]): Promise<void> {
+  const destino = `${prefijo}rechazados/`;
+  for (const k of claves) {
+    await copiar(k, destino + k.slice(prefijo.length));
+    await borrar(k);
+  }
+  const nota = [
+    `No se agendo ${nombre} (${new Date().toISOString()}):`,
+    ...motivos.map((m) => `- ${m}`),
+    "",
+    `Para reintentar, sube una version que cumpla a ${prefijo} (y borra esta de rechazados/).`,
+  ].join("\n");
+  await escribirTexto(`${destino}${nombre}.motivo.txt`, `${nota}\n`);
+}
+
+async function procesarMarca(
+  marca: Marca,
+  simular: boolean,
+  esperaMin: number,
+): Promise<{ agendados: number; fallidos: number }> {
   const prefijo = `entrada/${marca.id}/`;
   console.log(`\n=== ${marca.nombre} (${prefijo}) ===`);
+
+  // Marcador para que la carpeta se vea en el panel de Cloudflare aunque este vacia.
+  if (!simular && !(await existe(prefijo))) await escribirTexto(prefijo, "");
 
   const { lotes, ignorados } = armarLotes(await listarPrefijo(prefijo), prefijo);
   for (const i of ignorados) console.log(`⚠️  Ignorado: ${i}`);
@@ -110,6 +153,12 @@ async function procesarMarca(marca: Marca, simular: boolean): Promise<{ agendado
   for (const lote of lotes) {
     const nombre = lote.medio.key.slice(prefijo.length);
     const textos = [lote.txtGeneral, ...Object.values(lote.txtPorRed)].filter((k): k is string => !!k);
+
+    // Si se acaba de subir, puede que el .txt todavia no llegue: se agenda en la siguiente corrida.
+    if (Date.now() - lote.modificado < esperaMin * 60_000) {
+      console.log(`⏳ ${nombre}: subido hace menos de ${esperaMin} min; se agenda en la siguiente corrida.`);
+      continue;
+    }
 
     try {
       // ¿Ya se agendo en una corrida anterior que no alcanzo a limpiar entrada/?
@@ -132,7 +181,12 @@ async function procesarMarca(marca: Marca, simular: boolean): Promise<{ agendado
       for (const a of v.avisos) console.log(`⚠️  ${nombre}: ${a}`);
       if (!v.ok) {
         for (const e of v.errores) console.log(`❌ ${nombre}: ${e}`);
-        console.log(`   Se queda en ${prefijo} sin agendar.`);
+        if (simular) {
+          console.log(`   Se moveria a ${prefijo}rechazados/ (simulacion).`);
+        } else {
+          await rechazar(prefijo, [lote.medio.key, ...textos], nombre, v.errores);
+          console.log(`   Movido a ${prefijo}rechazados/ con el motivo en ${nombre}.motivo.txt`);
+        }
         fallidos++;
         continue;
       }
@@ -189,8 +243,14 @@ async function procesarMarca(marca: Marca, simular: boolean): Promise<{ agendado
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
-    options: { marca: { type: "string" }, simular: { type: "boolean", default: false } },
+    options: {
+      marca: { type: "string" },
+      simular: { type: "boolean", default: false },
+      espera: { type: "string", default: "0" },
+    },
   });
+  const esperaMin = Number(values.espera);
+  if (!Number.isFinite(esperaMin) || esperaMin < 0) throw new Error(`--espera invalido: ${values.espera}`);
   const todas = await leerMarcas();
   const marcas = values.marca ? todas.filter((m) => m.id === values.marca) : todas;
   if (marcas.length === 0) {
@@ -202,7 +262,7 @@ async function main(): Promise<void> {
   // Cada marca por separado: si una falla, las demas siguen.
   for (const marca of marcas) {
     try {
-      const r = await procesarMarca(marca, values.simular);
+      const r = await procesarMarca(marca, values.simular, esperaMin);
       fallidos += r.fallidos;
       agendados += r.agendados;
     } catch (e) {

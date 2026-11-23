@@ -10,6 +10,7 @@ import {
   GetObjectCommand,
   CopyObjectCommand,
   DeleteObjectCommand,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -47,6 +48,8 @@ export interface ObjetoR2 {
   key: string;
   bytes: number;
   etag: string;
+  /** Fecha de ultima modificacion (epoch ms). */
+  modificado: number;
 }
 
 export async function listarBucket(maxArchivos = 5): Promise<{ total: number; muestra: string[] }> {
@@ -66,7 +69,14 @@ export async function listarPrefijo(prefijo: string): Promise<ObjetoR2[]> {
       new ListObjectsV2Command({ Bucket: bucketR2(), Prefix: prefijo, ContinuationToken: token }),
     );
     for (const o of resp.Contents ?? []) {
-      if (o.Key) objetos.push({ key: o.Key, bytes: o.Size ?? 0, etag: (o.ETag ?? "").replaceAll('"', "") });
+      if (o.Key) {
+        objetos.push({
+          key: o.Key,
+          bytes: o.Size ?? 0,
+          etag: (o.ETag ?? "").replaceAll('"', ""),
+          modificado: o.LastModified?.getTime() ?? 0,
+        });
+      }
     }
     token = resp.IsTruncated ? resp.NextContinuationToken : undefined;
   } while (token);
@@ -107,6 +117,19 @@ export async function copiar(origen: string, destino: string): Promise<void> {
       Bucket: bucket,
       Key: destino,
       CopySource: `${bucket}/${origen.split("/").map(encodeURIComponent).join("/")}`,
+    }),
+  );
+}
+
+/** Escribe un texto pequeño (notas de rechazo, marcadores de carpeta). Nunca se usa para medios. */
+export async function escribirTexto(key: string, texto: string): Promise<void> {
+  await crearClienteR2().send(
+    new PutObjectCommand({
+      Bucket: bucketR2(),
+      Key: key,
+      Body: Buffer.from(texto, "utf8"),
+      ContentLength: Buffer.byteLength(texto, "utf8"),
+      ContentType: "text/plain; charset=utf-8",
     }),
   );
 }
