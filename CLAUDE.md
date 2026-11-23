@@ -39,8 +39,22 @@ verificar desde código.
     (con este token, `/me` es el usuario del sistema, no la cuenta de IG).
   - Docs: developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login
 - Sin Facebook, sin LinkedIn.
-- **TikTok y YouTube quedan fuera de esta plataforma** (se publican por otra
-  vía: TikTok con el conector de TikTok de Claude mediante tarea programada).
+- **TikTok y YouTube quedan fuera de esta plataforma.** Decisión de Marcus
+  (nov 2026): mantener costo cero; TikTok lo programa a mano en TikTok Studio.
+  - No construir integración propia con la Content Posting API de TikTok:
+    sin auditoría solo publica en privado (SELF_ONLY) y exige que la cuenta
+    esté en privado; y la auditoría rechaza explícitamente herramientas
+    personales ("A utility tool to help upload contents to the account(s) you
+    or your team manages"; "Apps must not be for private or personal use").
+    Docs: developers.tiktok.com/doc/content-sharing-guidelines y
+    /doc/app-review-guidelines.
+  - El conector de TikTok de Claude (Higgsfield) exige que Marcus revise y
+    confirme cada publicación; no sirve para publicar sin intervención.
+  - **Si más adelante decide pagar**, la opción es un servicio ya auditado con
+    API: **Blotato** (Starter $29 USD/mes; la prueba gratis no incluye API) o
+    **Upload-Post** (TikTok solo en planes de pago, desde ~$16–24 USD/mes;
+    el plan gratis no incluye TikTok). Precios vistos en nov 2026: volver a
+    confirmarlos y avisar el costo antes de contratar (regla 1).
 - Siempre que un paso implique iniciar sesión en el Instagram de FTND,
   recuérdale a Marcus hacerlo en **ventana de incógnito** con `@ftnd_music`
   (para no mezclar sesiones con su cuenta personal).
@@ -360,7 +374,8 @@ seguir. Explicarle cada paso manual clic por clic.
 
 ## Fuera de alcance
 
-- **TikTok y YouTube** para FTND (se publican por otra vía).
+- **TikTok y YouTube** para FTND (TikTok se programa a mano en TikTok Studio;
+  ver la sección de FTND para la opción de pago si se decide después).
 - **TikTok** para Tezontle (por ahora).
 - Historias de Instagram, carruseles, música con licencia y analíticas.
 - LinkedIn página de empresa (hasta que se apruebe el Community Management
