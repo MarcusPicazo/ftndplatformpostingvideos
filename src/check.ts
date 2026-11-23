@@ -41,7 +41,8 @@ async function graphGet(ruta: string, token: string, params: Record<string, stri
   const data: any = await resp.json().catch(() => ({}));
   if (!resp.ok || data.error) {
     const e = data.error;
-    const msg = e ? `(#${e.code}${e.error_subcode ? `/${e.error_subcode}` : ""}) ${e.message}` : `HTTP ${resp.status}`;
+    const codigo = `(#${e?.code}${e?.error_subcode ? `/${e.error_subcode}` : ""})`;
+    const msg = e ? (String(e.message).startsWith("(#") ? e.message : `${codigo} ${e.message}`) : `HTTP ${resp.status}`;
     throw new Error(ocultar(msg, token));
   }
   return data;
@@ -114,9 +115,13 @@ async function checkInstagram(marca: Marca): Promise<Resultado[]> {
     return uso ? `${uso.quota_usage}/${uso.config?.quota_total ?? "?"} en las ultimas 24 h` : "sin datos";
   }));
 
-  r.push(await paso("Instagram: token", async () => {
+  // debug_token necesita un token de app (META_APP_ID|META_APP_SECRET); un SUAT no puede revisarse a si mismo.
+  r.push(await paso("Instagram: caducidad y permisos del token", async () => {
     const token = env(cfg.secret_token);
-    const data = await graphGet("/debug_token", token, { input_token: token });
+    const appToken = `${env("META_APP_ID")}|${env("META_APP_SECRET")}`;
+    const data = await graphGet("/debug_token", appToken, { input_token: token }).catch((e: Error) => {
+      throw new Error(ocultar(e.message, token, appToken));
+    });
     const d = data.data ?? {};
     if (d.is_valid === false) throw new Error("Meta dice que el token no es valido");
     const permisos: string[] = d.scopes ?? [];

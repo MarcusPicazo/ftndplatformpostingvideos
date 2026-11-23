@@ -229,6 +229,9 @@ existe uno específico para una red, se usa el `.txt` general.
 ```
 GRAPH_VERSION=v27.0
 
+META_APP_ID=            # app "FTND Publicador"; check lo usa para debug_token
+META_APP_SECRET=        # (un SUAT no puede revisar su propia caducidad)
+
 FTND_IG_TOKEN=          # SUAT de Unified Login (caducidad "Nunca")
 FTND_IG_USER_ID=        # opcional: check lo descubre con /me/assigned_instagram_accounts
 

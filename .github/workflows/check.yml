@@ -20,9 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -32,6 +32,8 @@ jobs:
       - name: Check
         env:
           GRAPH_VERSION: v27.0
+          META_APP_ID: ${{ secrets.META_APP_ID }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
           FTND_IG_TOKEN: ${{ secrets.FTND_IG_TOKEN }}
           FTND_IG_USER_ID: ${{ secrets.FTND_IG_USER_ID }}
           TEZONTLE_IG_TOKEN: ${{ secrets.TEZONTLE_IG_TOKEN }}
