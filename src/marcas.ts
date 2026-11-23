@@ -17,9 +17,18 @@ export interface Marca {
   dias: Dia[];
   redes_activas: Red[];
   borrar_de_r2_tras_dias: number;
-  instagram?: { modo: "instagram_login" | "facebook_login"; secret_token: string };
-  facebook?: { secret_token: string };
-  linkedin?: { alcance: "perfil_personal" | "pagina_empresa"; secret_token: string };
+  /**
+   * unified_login: Instagram API with Unified Login (SUAT, graph.facebook.com, sin pagina de Facebook).
+   * facebook_login: Instagram API with Facebook Login (cuenta vinculada a pagina, graph.facebook.com).
+   * instagram_login: Instagram API with Instagram Login (graph.instagram.com; ya no disponible en apps nuevas).
+   */
+  instagram?: {
+    modo: "unified_login" | "facebook_login" | "instagram_login";
+    secret_token: string;
+    secret_user_id: string;
+  };
+  facebook?: { secret_token: string; secret_page_id: string };
+  linkedin?: { alcance: "perfil_personal" | "pagina_empresa"; secret_token: string; secret_person_urn: string };
 }
 
 const RUTA_MARCAS = fileURLToPath(new URL("../config/marcas.json", import.meta.url));

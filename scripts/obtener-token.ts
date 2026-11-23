@@ -1,3 +1,7 @@
+// NOTA: este script es solo para Tezontle (Facebook Login, token de pagina).
+// FTND usa Instagram API with Unified Login: su token (SUAT) se genera en el
+// panel de Meta y no necesita este script.
+//
 // Ayuda unica para sacar el Page access token (de larga duracion) y el IG_USER_ID.
 // Ver Fase 0 de CLAUDE.md para el paso a paso completo (clic por clic).
 //
@@ -27,7 +31,7 @@
 import "dotenv/config";
 import { createInterface } from "node:readline/promises";
 
-const GRAPH_VERSION = process.env.GRAPH_VERSION ?? "v26.0";
+const GRAPH_VERSION = process.env.GRAPH_VERSION ?? "v27.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 function requireEnv(name: string): string {
