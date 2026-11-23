@@ -104,7 +104,7 @@ verificar desde código.
 ```
 [navegador de Marcus]
   dashboard de Cloudflare ──► R2: entrada/{marca}/archivo.mp4 (+ archivo.txt)
-                                        │  GitHub Actions "Subir lote" (subir-lote.ts)
+                                        │  GitHub Actions "Subir lote" (subir-lote.ts, solo cada 30 min)
                                         ├──► R2: videos/{marca}/{id}.mp4 (copia idéntica)
                                         └──► contenido/{marca}/calendario.json ──commit──► GitHub repo
                                                                   │  cron cada hora
@@ -147,7 +147,7 @@ publicador-fraternidad/
   scripts/
     obtener-token.ts         # ayuda interactiva para sacar tokens (parametrizado por marca/red)
   .github/workflows/publicar.yml
-  .github/workflows/subir-lote.yml   # manual (Run workflow): agenda y hace commit
+  .github/workflows/subir-lote.yml   # cada 30 min y manual (Run workflow): agenda y hace commit
   .github/workflows/check.yml        # manual (Run workflow): valida credenciales y R2
   .env.example
 ```
@@ -164,7 +164,16 @@ videos/tezontle/
 Se procesan solo los archivos directamente dentro de `entrada/{marca}/`
 (videos `.mp4`/`.mov`, imágenes `.jpg`/`.jpeg`/`.png`), en orden alfabético
 (para controlar el orden, nombrarlos `01-…`, `02-…`). Lo que no pasa la
-validación se queda en `entrada/` y el workflow falla para avisar.
+validación se mueve a `entrada/{marca}/rechazados/` con un
+`archivo.motivo.txt`, y esa corrida del workflow falla (una sola vez) para
+avisar por correo.
+
+- El panel de Cloudflare solo deja subir archivos de **hasta 300 MB** desde el
+  navegador (coincide con el máximo de Instagram para Reels por API).
+- Marcus no puede mandar los videos por el chat de Claude para que se suban:
+  las llaves de R2 solo viven en GitHub Secrets, y la firma de R2 (S3 SigV4)
+  no se puede inyectar por el proxy del entorno de Claude. La vía es el panel
+  de Cloudflare.
 
 Cada video o imagen puede llevar un `.txt` con el mismo nombre para el copy
 general. Opcionalmente, copys distintos por red:
@@ -274,8 +283,12 @@ seguir. Explicarle cada paso manual clic por clic.
 ### Fase 1: `subir-lote` multi-marca
 
 - `npm run subir-lote -- --marca ftnd` (o `tezontle`; sin `--marca` procesa
-  todas; `--simular` no cambia nada). Normalmente se corre desde GitHub
-  Actions → "Subir lote" → Run workflow, que además hace commit del calendario.
+  todas; `--simular` no cambia nada; `--espera 10` ignora lo subido hace
+  menos de 10 min). El workflow "Subir lote" corre **solo cada 30 min**
+  (con `--espera 10`, para que el `.txt` alcance a llegar) y también a mano
+  (Run workflow, sin espera); en ambos casos hace commit del calendario.
+- Si no existen, crea los marcadores `entrada/{marca}/` para que la carpeta se
+  vea en el panel de Cloudflare.
 - Lista R2 `entrada/{marca}/`, valida con ffprobe sobre URL prefirmada (sin
   descargar), lee copy general y copys por red, asigna el siguiente horario
   libre, copia a `videos/{marca}/{id}.ext` (copia del servidor, bytes
@@ -344,7 +357,7 @@ seguir. Explicarle cada paso manual clic por clic.
 ## Definición de terminado
 
 - Marcus sube medios y sus `.txt` a R2 `entrada/{marca}/` desde el navegador,
-  corre el workflow "Subir lote" (o se corre solo), y el contenido sale solo
+  "Subir lote" los agenda solo (cada 30 min), y el contenido sale solo
   en las redes activas de cada marca a la hora agendada, sin ninguna compu
   prendida.
 - Ninguna publicación se duplica.

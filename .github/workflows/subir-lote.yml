@@ -1,10 +1,14 @@
 # Agenda lo que Marcus subio a entrada/{marca}/ en R2 y hace commit del calendario.
-# Se corre a mano desde GitHub: Actions -> "Subir lote" -> Run workflow.
-# (En la Fase 6 tambien se correra automaticamente antes de publicar.)
+# - Automatico: cada 30 minutos (en los minutos :07 y :37; GitHub puede retrasarlo unos minutos).
+#   Solo toma archivos subidos hace al menos 10 minutos, para no agendar un video
+#   antes de que termine de llegar su .txt.
+# - Manual: Actions -> "Subir lote" -> Run workflow (toma todo de inmediato).
 
 name: Subir lote
 
 on:
+  schedule:
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       marca:
@@ -29,6 +33,10 @@ jobs:
   subir-lote:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      MARCA: ${{ inputs.marca || 'todas' }}
+      SIMULAR: ${{ inputs.simular && 'true' || 'false' }}
+      ESPERA: ${{ github.event_name == 'schedule' && '10' || '0' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -37,28 +45,41 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Instalar ffprobe
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-
       - run: npm ci
 
-      - name: Agendar desde R2
+      # Revisión rápida: si entrada/ está vacía, no instala ffprobe ni hace nada más.
+      - name: Revisar si hay archivos nuevos
+        id: revisar
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          MARCA: ${{ inputs.marca }}
-          SIMULAR: ${{ inputs.simular }}
         run: |
-          args=()
+          args=(--hay-pendientes)
+          if [ "$MARCA" != "todas" ]; then args+=(--marca "$MARCA"); fi
+          npm run subir-lote -- "${args[@]}"
+
+      - name: Instalar ffprobe (si hace falta)
+        if: steps.revisar.outputs.hay == 'true'
+        run: command -v ffprobe >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg)
+
+      - name: Agendar desde R2
+        if: steps.revisar.outputs.hay == 'true'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          args=(--espera "$ESPERA")
           if [ "$MARCA" != "todas" ]; then args+=(--marca "$MARCA"); fi
           if [ "$SIMULAR" = "true" ]; then args+=(--simular); fi
           npm run subir-lote -- "${args[@]}"
 
       # Se ejecuta aunque algun archivo haya fallado, para no perder lo que si se agendo.
       - name: Commit del calendario
-        if: always() && inputs.simular == false
+        if: always() && env.SIMULAR != 'true' && steps.revisar.outputs.hay == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -67,5 +88,6 @@ jobs:
             echo "Sin cambios en el calendario."
           else
             git commit -m "chore: agenda lote desde R2 [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
             git push
           fi
